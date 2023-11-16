@@ -4,13 +4,13 @@ require('dotenv').config();
 
 async function getAzureADToken() {
     // Replace hardcoded values with environment variables
-    const tenantId = process.env.TENANT_ID;
-    const clientId = process.env.CLIENT_ID;
-    const clientSecret = process.env.CLIENT_SECRET;
-    const scope = process.env.SCOPE;
+    const tenantId = process.env.tenant_Id;
+    const clientId = process.env.client_Id;
+    const clientSecret = process.env.client_Secret;
+    const scope = process.env.ADscope;
     
     // Use the environment variable for the token URL
-    const tokenUrl = process.env.TOKEN_URL;
+    const tokenUrl = process.env.token_url;
     
     const tokenRequestData = new URLSearchParams();
     tokenRequestData.append('client_id', clientId);

@@ -1,6 +1,10 @@
 require('dotenv').config();
-console.log(`Tenant ID: ${process.env.AZURE_TENANT_ID}`);
-console.log(`Client ID: ${process.env.AZURE_CLIENT_ID}`)
+console.log(`Tenant ID: ${process.env.tenant_Id}`);
+console.log(`Client ID: ${process.env.client_Id}`)
+console.log(`secret ID: ${process.env.client_Secret}`);
+console.log(`scope ID: ${process.env.ADscope}`)
+console.log(`Token ID: ${process.env.token_Url}`);
+console.log(`server ID: ${process.env.fhirServer_URL}`)
 const express = require('express');
 const axios = require('axios');
 const getAzureADToken = require('./getAzureADToken'); // Import the function to get Azure AD token
@@ -45,7 +49,7 @@ app.post('/fhir/list', async (req, res) => {
         const accessToken = await getAzureADToken(); // Get the access token from Azure AD
 
         // Define the FHIR server URL (should be stored as an environment variable)
-        const fhirServerURL = process.env.FHIR_SERVER_URL;
+        const fhirServerURL = process.env.fhirServer_URL;
         // Send the List resource to the FHIR server
         const response = await axios.post(`${fhirServerURL}/List`, fhirListResource, {
             headers: {
