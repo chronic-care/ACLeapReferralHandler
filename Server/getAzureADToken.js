@@ -1,6 +1,6 @@
 require('dotenv').config();
 const axios = require('axios');
-require('dotenv').config();
+
 
 async function getAzureADToken() {
     // Replace hardcoded values with environment variables

@@ -1,16 +1,19 @@
 require('dotenv').config();
 console.log(`Tenant ID: ${process.env.tenant_Id}`);
-console.log(`Client ID: ${process.env.client_Id}`)
-console.log(`secret ID: ${process.env.client_Secret}`);
-console.log(`scope ID: ${process.env.ADscope}`)
-console.log(`Token ID: ${process.env.token_Url}`);
-console.log(`server ID: ${process.env.fhirServer_URL}`)
+console.log(`Client ID: ${process.env.client_Id}`);
+console.log(`Secret ID: ${process.env.client_Secret}`);
+console.log(`Scope ID: ${process.env.ADscope}`);
+console.log(`Token URL: ${process.env.token_Url}`);
+console.log(`Server URL: ${process.env.fhirServer_URL}`);
+
 const express = require('express');
+const cors = require('cors');
 const axios = require('axios');
-const getAzureADToken = require('./getAzureADToken'); // Import the function to get Azure AD token
+const getAzureADToken = require('./getAzureADToken');
 
 const app = express();
-app.use(express.json()); // Middleware to parse JSON bodies
+app.use(cors());
+app.use(express.json());
 
 // validation function for the FHIR List resource
 function validateFHIRListResource(resource) {
@@ -41,9 +44,11 @@ function validateFHIRListResource(resource) {
 }
 
 // Create a POST route for '/fhir/list' to accept FHIR List resources
-app.post('/fhir/list', async (req, res) => {
+app.post('/list', async (req, res) => {
+    console.log("Received request body:", req.body);
     try {
         const fhirListResource = req.body; // Get the FHIR List resource from the request body
+        console.log("Resource before validation:", JSON.stringify(fhirListResource, null, 2));
         validateFHIRListResource(fhirListResource); // Validate the FHIR List resource
 
         const accessToken = await getAzureADToken(); // Get the access token from Azure AD
@@ -53,7 +58,8 @@ app.post('/fhir/list', async (req, res) => {
         // Send the List resource to the FHIR server
         const response = await axios.post(`${fhirServerURL}/List`, fhirListResource, {
             headers: {
-                'Content-Type': 'application/fhir+json', // Set content type as FHIR JSON
+                //'Content-Type': 'application/fhir+json', // Set content type as FHIR JSON
+                'Content-Type': 'application/json',
                 'Authorization': `Bearer ${accessToken}` // Set the authorization header
             }
         });
@@ -65,6 +71,7 @@ app.post('/fhir/list', async (req, res) => {
     } catch (error) {
         // Log the error
         console.error('Error:', error);
+        console.log("Error details:", JSON.stringify(error, null, 2));
         if (error.response) {
             // Send back the error response from the FHIR server
             return res.status(error.response.status).send({ message: 'FHIR Server Error', error: error.response.data });

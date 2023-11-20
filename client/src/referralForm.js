@@ -7,6 +7,7 @@ const ReferralForm = () => {
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const handleInputChange = (e) => {
+        console.log("Input changed:", e.target.value);
         setListInput(e.target.value);
     };
 
@@ -14,13 +15,19 @@ const ReferralForm = () => {
         e.preventDefault();
         setIsSubmitting(true);
         try {
+            const parsedInput = JSON.parse(listInput);
+            console.log("Parsed input:", parsedInput);
             // backend endpoint URL
-            const endpoint = 'http://localhost:3000/fhir/list';
+            const endpoint = '/list';
             const response = await axios.post(endpoint, JSON.parse(listInput), {
+                //headers: { 'Content-Type': 'application/fhir+json' },
                 headers: { 'Content-Type': 'application/fhir+json' },
+                
             });
+            console.log("Axios response:", response);
             setConfirmation(response.data);
         } catch (error) {
+            console.log("Error in handleSubmit:", error);
             setConfirmation(error.message);
         } finally {
             setIsSubmitting(false);
