@@ -21,7 +21,7 @@ const ReferralForm = () => {
             const endpoint = '/list';
             const response = await axios.post(endpoint, JSON.parse(listInput), {
                 //headers: { 'Content-Type': 'application/fhir+json' },
-                headers: { 'Content-Type': 'application/fhir+json' },
+                headers: { 'Content-Type': 'application/json' },
                 
             });
             console.log("Axios response:", response);
