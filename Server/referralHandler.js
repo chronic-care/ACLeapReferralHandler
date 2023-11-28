@@ -43,47 +43,61 @@ function validateFHIRListResource(resource) {
     }
 }
 
-// Create a POST route for '/fhir/list' to accept FHIR List resources
 app.post('/list', async (req, res) => {
     console.log("Received request body:", req.body);
     try {
-        const fhirListResource = req.body; // Get the FHIR List resource from the request body
+        const fhirListResource = req.body;
         console.log("Resource before validation:", JSON.stringify(fhirListResource, null, 2));
-        validateFHIRListResource(fhirListResource); // Validate the FHIR List resource
+        validateFHIRListResource(fhirListResource);
 
-        const accessToken = await getAzureADToken(); // Get the access token from Azure AD
-
-        // Define the FHIR server URL (should be stored as an environment variable)
+        const accessToken = await getAzureADToken();
         const fhirServerURL = process.env.fhirServer_URL;
-        // Send the List resource to the FHIR server
-        const response = await axios.post(`${fhirServerURL}/List`, fhirListResource, {
+
+        // First, send the List resource to the FHIR server
+        const postResponse = await axios.post(`${fhirServerURL}/List`, fhirListResource, {
             headers: {
-                //'Content-Type': 'application/fhir+json', // Set content type as FHIR JSON
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${accessToken}` // Set the authorization header
+                'Authorization': `Bearer ${accessToken}`
             }
         });
+        console.log('FHIR server post response:', JSON.stringify(postResponse.data, null, 2));
 
-        // Log the FHIR server response
-        console.log('FHIR server response:', JSON.stringify(response.data, null, 2));
-        // Send back the FHIR server's response with a 201 status code
-        return res.status(201).send(response.data);
+        // Then, perform FHIR Queries for Each Patient ID
+        const patientIds = fhirListResource.entry.map(entry => entry.item.reference.split('/')[1]);
+        console.log("Extracted Patient IDs:", patientIds);
+        let aggregatedResponse = [];
+        for (const patientId of patientIds) {
+            const queryUrl = `${fhirServerURL}/ServiceRequest?_count=1000&_format=json&_summary=data&patient=${patientId}&category=referrals&code=ZZZZZ,ZZZZZ-2&_include=ServiceRequest:*`;
+            const queryResponse = await axios.get(queryUrl, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`
+                }
+            });
+            aggregatedResponse.push(queryResponse.data);
+        }
+
+        // Combine the post response and the aggregated query responses
+        const combinedResponse = {
+            postResponse: postResponse.data,
+            queryResponses: aggregatedResponse
+        };
+
+        // Send back the combined response
+        return res.status(200).send(combinedResponse);
     } catch (error) {
-        // Log the error
         console.error('Error:', error);
         console.log("Error details:", JSON.stringify(error, null, 2));
         if (error.response) {
-            // Send back the error response from the FHIR server
             return res.status(error.response.status).send({ message: 'FHIR Server Error', error: error.response.data });
         } else if (error.request) {
-            // Handle no response received case
             return res.status(500).send({ message: 'No response received from FHIR Server', error: error.message });
         } else {
-            // Handle other errors
             return res.status(500).send({ message: 'Error processing your request', error: error.message });
         }
     }
 });
+
 
 // Start the server on the specified port or default to 3000
 const port = process.env.PORT || 3000;

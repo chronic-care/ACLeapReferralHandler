@@ -52,11 +52,24 @@ const ReferralForm = () => {
             {confirmation && (
                 <div>
                     <h3>Confirmation</h3>
-                    <pre>{JSON.stringify(confirmation, null, 2)}</pre>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <div>
+                            <h4>Post Response:</h4>
+                            <pre style={{ background: '#f0f0f0', padding: '10px' }}>
+                                {JSON.stringify(confirmation.postResponse, null, 2)}
+                            </pre>
+                        </div>
+                        <div>
+                            <h4>Query Responses:</h4>
+                            <pre style={{ background: '#f0f0f0', padding: '10px' }}>
+                                {JSON.stringify(confirmation.queryResponses, null, 2)}
+                            </pre>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>
-    );
+    )
 };
 
 export default ReferralForm;
