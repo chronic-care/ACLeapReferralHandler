@@ -18,7 +18,8 @@ const ReferralForm = () => {
             const parsedInput = JSON.parse(listInput);
             console.log("Parsed input:", parsedInput);
             // backend endpoint URL
-            const endpoint = '/list';
+            const endpoint = 'https://referralhandlerserverside.azurewebsites.net/list';
+            //const endpoint = '/list';
             const response = await axios.post(endpoint, JSON.parse(listInput), {
                 //headers: { 'Content-Type': 'application/fhir+json' },
                 headers: { 'Content-Type': 'application/json' },

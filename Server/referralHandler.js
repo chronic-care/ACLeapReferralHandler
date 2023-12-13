@@ -11,9 +11,21 @@ const cors = require('cors');
 const axios = require('axios');
 const getAzureADToken = require('./getAzureADToken');
 
+//cors config for cross communication
 const app = express();
-app.use(cors());
+const corsOptions = {
+  origin: 'https://acleapreferralhandler.azure-api.net', 
+  optionsSuccessStatus: 200, 
+  credentials: true, 
+  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE', 
+};
+
+// Apply CORS with the specified options
+app.use(cors(corsOptions));
+
+// Use express.json() to parse JSON payloads
 app.use(express.json());
+
 
 // validation function for the FHIR List resource
 function validateFHIRListResource(resource) {
@@ -110,7 +122,7 @@ app.listen(port, () => {
 
 
 //DIR ROUTE:
-//cd C:\Users\NoahGeorge\Desktop\referralHandler\ACLeap-Referral-Handler\client\src
+//cd C:\Users\NoahGeorge\Desktop\referralHandler\ACLeap-Referral-Handler\client
 
 
 //RUN APP:
