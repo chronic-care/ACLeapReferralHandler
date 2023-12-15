@@ -11,13 +11,22 @@ const cors = require('cors');
 const axios = require('axios');
 const getAzureADToken = require('./getAzureADToken');
 
-//cors config for cross communication
 const app = express();
+
+// Define the whitelist for allowed origins
+const whitelist = ['https://acleapreferralhandler.azure-api.net','https://referralhandler.azurewebsites.net']; // Add any other origins you want to allow here
+
+// Configure CORS options
 const corsOptions = {
-  origin: 'https://acleapreferralhandler.azure-api.net', 
-  optionsSuccessStatus: 200, 
-  credentials: true, 
-  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE', 
+  origin: function (origin, callback) {
+    if (whitelist.indexOf(origin) !== -1 || !origin) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true, // To allow cookies and sessions
+  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
 };
 
 // Apply CORS with the specified options
