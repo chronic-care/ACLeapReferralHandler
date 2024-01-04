@@ -4,10 +4,10 @@ import axios from 'axios';
 const ReferralForm = () => {
     const [listInput, setListInput] = useState('');
     const [confirmation, setConfirmation] = useState(null);
+    const [tasks, setTasks] = useState(null); // State to store tasks
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const handleInputChange = (e) => {
-        console.log("Input changed:", e.target.value);
         setListInput(e.target.value);
     };
 
@@ -16,20 +16,19 @@ const ReferralForm = () => {
         setIsSubmitting(true);
         try {
             const parsedInput = JSON.parse(listInput);
-            console.log("Parsed input:", parsedInput);
-            // backend endpoint URL
-            const endpoint = 'https://referralhandlerserverside.azurewebsites.net';
-            console.log("Attempting to post to URL:", endpoint);
-            //const endpoint = '/list';
-            const response = await axios.post(endpoint, JSON.parse(listInput), {
-                //headers: { 'Content-Type': 'application/fhir+json' },
-                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-                
+            const endpoint = 'http://localhost:3000/list';
+            const response = await axios.post(endpoint, parsedInput, {
+                headers: { 'Content-Type': 'application/json' },
             });
-            console.log("Axios response:", response);
-            setConfirmation(response.data);
+
+            // Assuming response.data contains 'postResponse', 'queryResponses', and 'taskResponses'
+            setConfirmation({
+                postResponse: response.data.postResponse,
+                queryResponses: response.data.queryResponses,
+            });
+            setTasks(response.data.taskResponses); // Save the tasks in state
         } catch (error) {
-            console.log("Error in handleSubmit:", error);
+            console.error("Error in handleSubmit:", error);
             setConfirmation(error.message);
         } finally {
             setIsSubmitting(false);
@@ -54,7 +53,7 @@ const ReferralForm = () => {
             {confirmation && (
                 <div>
                     <h3>Confirmation</h3>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                         <div>
                             <h4>Post Response:</h4>
                             <pre style={{ background: '#f0f0f0', padding: '10px' }}>
@@ -67,11 +66,19 @@ const ReferralForm = () => {
                                 {JSON.stringify(confirmation.queryResponses, null, 2)}
                             </pre>
                         </div>
+                        {tasks && (
+                            <div>
+                                <h4>Task Responses:</h4>
+                                <pre style={{ background: '#f0f0f0', padding: '10px' }}>
+                                    {JSON.stringify(tasks, null, 2)}
+                                </pre>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
         </div>
-    )
+    );
 };
 
 export default ReferralForm;

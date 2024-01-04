@@ -13,8 +13,8 @@ const getAzureADToken = require('./getAzureADToken');
 
 const app = express();
 
-// Define the whitelist for allowed origins
-const whitelist = ['https://acleapreferralhandler.azure-api.net','https://referralhandler.azurewebsites.net']; // Add any other origins you want to allow here
+// whitelist for allowed origins
+const whitelist = ['https://acleapreferralhandler.azure-api.net','https://referralhandler.azurewebsites.net','http://localhost:3001','https://emrconnect.org', 'https://aphh.emrconnect.org:9443']; 
 
 // Configure CORS options
 const corsOptions = {
@@ -64,6 +64,37 @@ function validateFHIRListResource(resource) {
     }
 }
 
+// Helper function to create a Task object
+function createTaskObject(serviceRequestReference, patientId) {
+    return {
+        "resourceType": "Task",
+        "meta": {
+            "profile": [
+                "http://hl7.org/fhir/us/sdoh-clinicalcare/StructureDefinition/SDOHCC-TaskForReferralManagement"
+            ]
+        },
+        "status": "requested",
+        "intent": "order",
+        "code": {
+            "coding": [
+                {
+                    "system": "http://hl7.org/fhir/CodeSystem/task-code",
+                    "code": "fulfill",
+                    "display": "Fulfill the service request"
+                }
+            ]
+        },
+        "focus": { "reference": serviceRequestReference },
+        "for": { "reference": `Patient/${patientId}` },
+        "authoredOn": new Date().toISOString(),
+        "requester": {
+            "reference": "Practitioner/example-practitioner",
+            "display": "Dr. Example"
+        }
+        
+    };
+}
+
 app.post('/list', async (req, res) => {
     console.log("Received request body:", req.body);
     try {
@@ -73,48 +104,60 @@ app.post('/list', async (req, res) => {
 
         const accessToken = await getAzureADToken();
         const fhirServerURL = process.env.fhirServer_URL;
-
-        // First, send the List resource to the FHIR server
+        
+        // Post the List resource to the FHIR server
         const postResponse = await axios.post(`${fhirServerURL}/List`, fhirListResource, {
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${accessToken}`
-            }
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` }
         });
-        console.log('FHIR server post response:', JSON.stringify(postResponse.data, null, 2));
-
-        // Then, perform FHIR Queries for Each Patient ID
-        const patientIds = fhirListResource.entry.map(entry => entry.item.reference.split('/')[1]);
-        console.log("Extracted Patient IDs:", patientIds);
-        let aggregatedResponse = [];
-        for (const patientId of patientIds) {
-            const queryUrl = `${fhirServerURL}/ServiceRequest?_count=1000&_format=json&_summary=data&patient=${patientId}&category=referrals&code=ZZZZZ,ZZZZZ-2&_include=ServiceRequest:*`;
-            const queryResponse = await axios.get(queryUrl, {
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${accessToken}`
-                }
+        
+        // Query for each Patient ID
+        const queryPromises = fhirListResource.entry.map(entry => {
+            const patientId = entry.item.reference.split('/')[1];
+            const queryUrl = `${fhirServerURL}/ServiceRequest?patient=${patientId}&...`; 
+            return axios.get(queryUrl, {
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` }
+            }).then(response => response.data).catch(error => {
+                console.error('Failed to get query response:', error);
+                return null; // Or handle as needed
             });
-            aggregatedResponse.push(queryResponse.data);
-        }
-
-        // Combine the post response and the aggregated query responses
+        });
+        
+        const queryResponses = await Promise.all(queryPromises);
+        
+        // Create a Task for each ServiceRequest
+        const taskPromises = fhirListResource.entry.map(entry => {
+            const serviceRequestReference = entry.item.reference;
+            const patientId = serviceRequestReference.split('/')[1];
+            const task = createTaskObject(serviceRequestReference, patientId); // Assuming createTaskObject is defined as shown before
+            
+            return axios.post(`${fhirServerURL}/Task`, task, {
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` }
+            }).then(response => response.data).catch(error => {
+                console.error('Failed to create task:', error);
+                return null; 
+            });
+        });
+        
+        const taskResponses = await Promise.all(taskPromises);
+        
+        // Combine the responses into one object to send back
         const combinedResponse = {
             postResponse: postResponse.data,
-            queryResponses: aggregatedResponse
+            queryResponses: queryResponses.filter(response => response != null),
+            taskResponses: taskResponses.filter(response => response != null)
         };
 
         // Send back the combined response
-        return res.status(200).send(combinedResponse);
+        res.status(200).json(combinedResponse);
     } catch (error) {
         console.error('Error:', error);
         console.log("Error details:", JSON.stringify(error, null, 2));
         if (error.response) {
-            return res.status(error.response.status).send({ message: 'FHIR Server Error', error: error.response.data });
+            res.status(error.response.status).send({ message: 'FHIR Server Error', error: error.response.data });
         } else if (error.request) {
-            return res.status(500).send({ message: 'No response received from FHIR Server', error: error.message });
+            res.status(500).send({ message: 'No response received from FHIR Server', error: error.message });
         } else {
-            return res.status(500).send({ message: 'Error processing your request', error: error.message });
+            res.status(500).send({ message: 'Error processing your request', error: error.message });
         }
     }
 });
@@ -130,9 +173,3 @@ app.listen(port, () => {
 
 
 
-//DIR ROUTE:
-//cd C:\Users\NoahGeorge\Desktop\referralHandler\ACLeap-Referral-Handler\client
-
-
-//RUN APP:
-//NODE referralHandler.js
