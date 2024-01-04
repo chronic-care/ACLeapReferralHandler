@@ -118,7 +118,7 @@ app.post('/list', async (req, res) => {
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` }
             }).then(response => response.data).catch(error => {
                 console.error('Failed to get query response:', error);
-                return null; // Or handle as needed
+                return null; 
             });
         });
         
@@ -128,7 +128,7 @@ app.post('/list', async (req, res) => {
         const taskPromises = fhirListResource.entry.map(entry => {
             const serviceRequestReference = entry.item.reference;
             const patientId = serviceRequestReference.split('/')[1];
-            const task = createTaskObject(serviceRequestReference, patientId); // Assuming createTaskObject is defined as shown before
+            const task = createTaskObject(serviceRequestReference, patientId); 
             
             return axios.post(`${fhirServerURL}/Task`, task, {
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` }
