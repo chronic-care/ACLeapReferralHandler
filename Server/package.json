@@ -5,7 +5,8 @@
   "main": "referralHandler.js",
   "scripts": {
     "test": "echo \"No test specified\" && exit 0",
-    "build": "babel . --out-dir dist --presets @babel/preset-env --ignore node_modules,dist"
+    "build": "babel . --out-dir dist --presets @babel/preset-env --ignore node_modules,dist",
+    "start":"node referralHandler.js"
   },
   "repository": {
     "type": "git",

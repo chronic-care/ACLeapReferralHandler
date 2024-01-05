@@ -10,7 +10,7 @@ async function getAzureADToken() {
     const scope = process.env.ADscope;
     
     // Token URL constructed with the tenant ID
-    const tokenUrl = process.env.token_url;
+    const tokenUrl = process.env.token_Url;
      // Set up the POST request body for the token request
     const tokenRequestData = new URLSearchParams();
     tokenRequestData.append('client_id', clientId);
