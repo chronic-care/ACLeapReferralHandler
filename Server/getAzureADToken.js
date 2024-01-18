@@ -34,3 +34,4 @@ async function getAzureADToken() {
 }
 
 module.exports = getAzureADToken;
+

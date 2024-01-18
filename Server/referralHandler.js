@@ -6,6 +6,8 @@ console.log(`Scope ID: ${process.env.ADscope}`);
 console.log(`Token URL: ${process.env.token_Url}`);
 console.log(`Server URL: ${process.env.fhirServer_URL}`);
 
+
+
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
@@ -14,7 +16,7 @@ const getAzureADToken = require('./getAzureADToken');
 const app = express();
 
 // whitelist for allowed origins
-const whitelist = ['https://acleapreferralhandler.azure-api.net','https://referralhandler.azurewebsites.net','http://localhost:3001','https://emrconnect.org', 'https://aphh.emrconnect.org:9443']; 
+const whitelist = ['https://acleapreferralhandler.azure-api.net','https://referralhandler.azurewebsites.net','http://localhost:3001','https://emrconnect.org', 'https://aphh.emrconnect.org:9443', 'https://referralhandlerserverside.azurewebsites.net']; 
 
 // Configure CORS options
 const corsOptions = {
@@ -34,6 +36,64 @@ app.use(cors(corsOptions));
 
 // Use express.json() to parse JSON payloads
 app.use(express.json());
+
+
+
+
+async function getADTokenAndLog() {
+    try {
+      const apimUrl = 'https://acleapreferralhandler.azure-api.net/test2/token';
+      const subscriptionKey = 'fbc46f8ac8ac42d7b7f00f6c73fb6ba5';
+  
+      const response = await axios.get(apimUrl, {
+        headers: {
+          'Ocp-Apim-Subscription-Key': subscriptionKey
+        }
+      });
+  
+      if (response.status === 200 && response.data.accessToken) {
+        const data = response.data;
+        makeFHIRRequest(response.data.accessToken);
+      } else {
+        console.error('Authentication failed.');
+      }
+    } catch (error) {
+      console.error('Error when calling APIM:', error);
+    }
+  }
+
+
+  async function makeFHIRRequest(accessToken) {
+    try {
+        
+        // Create the URL with query parameters
+        const apiUrl = 'https://acleapreferralhandler.azure-api.net/resources/ServiceRequest';
+
+        // Make the GET request with the bearer token and query parameters
+        const fhirResponse = await axios.get(apiUrl, {
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Ocp-Apim-Subscription-Key': 'fbc46f8ac8ac42d7b7f00f6c73fb6ba5'
+            },
+            params: {
+                'patient': '2001157662078660',
+                'code': 'ZZZZZ,ZZZZZ-2',
+                '_lastUpdated': 'ge2023-08-11T09:01:11'
+            }
+        });
+
+        console.log('FHIR Response:', fhirResponse.data);
+    } catch (error) {
+        console.error('Error when making FHIR request:', error);
+    }
+  }
+
+  
+
+  
+
+
+
 
 
 // validation function for the FHIR List resource
@@ -95,6 +155,26 @@ function createTaskObject(serviceRequestReference, patientId) {
     };
 }
 
+//meld connection
+/*async function patchToFhirMeld(fhirData) {
+    const meldApiEndpoint = "https://gw.interop.community/acleaphub/open";
+  
+    try {
+      const response = await axios.patch(meldApiEndpoint, fhirData, {
+        headers: {
+          'Content-Type': 'application/json'
+          
+        }
+      });
+  
+      return response.data;
+    } catch (error) {
+      console.error('Error patching to MELD:', error);
+      throw error;
+    }
+  }*/
+  
+
 app.post('/list', async (req, res) => {
     console.log("Received request body:", req.body);
     try {
@@ -139,6 +219,7 @@ app.post('/list', async (req, res) => {
         });
         
         const taskResponses = await Promise.all(taskPromises);
+
         
         // Combine the responses into one object to send back
         const combinedResponse = {
@@ -160,6 +241,8 @@ app.post('/list', async (req, res) => {
             res.status(500).send({ message: 'Error processing your request', error: error.message });
         }
     }
+
+    
 });
 
 app.get('/ping', async (req, res) => {
@@ -167,8 +250,27 @@ app.get('/ping', async (req, res) => {
 }
 );
 
+//meld Patch
+/*app.patch('/patchToFhirMeld', async (req, res) => {
+    try {
+        const fhirData = req.body; 
+
+        const meldResponse = await patchToFhirMeld(fhirData);
+
+        res.status(200).json({ message: 'PATCH request to MELD successful', meldResponse });
+    } catch (error) {
+        console.error('Error:', error);
+        console.log("Error details:", JSON.stringify(error, null, 2));
+        res.status(500).json({ message: 'Error patching to MELD', error: error.message });
+    }
+});*/
+
+
 // Start the server on the specified port or default to 3000
 const port = process.env.PORT;
 app.listen(port, () => {
     console.log(`Server is running on port ${port}`); // Log the server's running port
+    bToken = getADTokenAndLog();
+    console.log('this is a message', bToken);
+    
 });
