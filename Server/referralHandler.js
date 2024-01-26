@@ -53,6 +53,7 @@ async function getADTokenAndLog() {
   
       if (response.status === 200 && response.data.accessToken) {
         const data = response.data;
+        
         makeFHIRRequest(response.data.accessToken);
       } else {
         console.error('Authentication failed.');
@@ -76,13 +77,14 @@ async function getADTokenAndLog() {
                 'Ocp-Apim-Subscription-Key': 'fbc46f8ac8ac42d7b7f00f6c73fb6ba5'
             },
             params: {
-                'patient': '2001157662078660',
-                'code': 'ZZZZZ,ZZZZZ-2',
-                '_lastUpdated': 'ge2023-08-11T09:01:11'
+                'patient': '2010305739808320',
+                
+                '_id': '2021295817612060'
             }
         });
-
-        console.log('FHIR Response:', fhirResponse.data);
+        
+        console.log('FHIR Response:', fhirResponse );
+        //console.log('FHIR Response:', JSON.stringify(fhirResponse.data, null, 2));
     } catch (error) {
         console.error('Error when making FHIR request:', error);
     }
@@ -274,3 +276,5 @@ app.listen(port, () => {
     console.log('this is a message', bToken);
     
 });
+
+
