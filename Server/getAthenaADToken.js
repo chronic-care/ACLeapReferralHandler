@@ -1,11 +1,12 @@
 require('dotenv').config();
 const axios = require('axios');
+const makeFHIRRequest = require('./referralHandler');
  
  
 async function getAthenaADToken() {
     try {
       const apimUrl = 'https://acleapreferralhandler.azure-api.net/test2/token';
-      const subscriptionKey = 'fbc46f8ac8ac42d7b7f00f6c73fb6ba5';
+      const subscriptionKey = process.env.athenaSubscription_KEY;
  
       const response = await axios.get(apimUrl, {
         headers: {
