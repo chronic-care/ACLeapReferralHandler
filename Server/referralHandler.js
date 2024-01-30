@@ -72,6 +72,32 @@ function validateFHIRListResource(resource) {
 }
 
 // Helper function to create a Task object
+function getPractitionerDetails(queryJson) {
+    const requesterReference = queryJson.entry.map(entry => entry.resource?.requester?.reference).find(reference => reference);
+
+    if (requesterReference) {
+        const practitionerId = requesterReference.split('/')[1];
+        console.log("Requester Practitioner ID:", practitionerId);
+
+        const requesterPractitioner = queryJson.entry.find(entry =>
+            entry.fullUrl.includes(practitionerId) && entry.resource.resourceType === 'Practitioner'
+        )?.resource;
+
+        if (requesterPractitioner) {
+            const requesterPractitionerId = requesterPractitioner.id;
+            // const requesterPractitionerName = requesterPractitioner.name[0];
+            const requesterPractitionerName = `${requesterPractitioner.name[0]?.family || ''} ${requesterPractitioner.name[0]?.given?.join(' ') || ''} ${requesterPractitioner.name[0]?.suffix?.join(' ') || ''}`;
+            console.log("Requester Practitioner ID:", requesterPractitionerId);
+            console.log("Requester Practitioner Name:", requesterPractitionerName);
+
+        } else {
+            console.log("Requester Practitioner not found in the queryJson.");
+        }
+    } else {
+        console.log("Requester reference not found in any entry.");
+    }
+}
+
 function createTaskObject(serviceRequestReference, patientId) {
     return {
         "resourceType": "Task",
@@ -97,16 +123,22 @@ function createTaskObject(serviceRequestReference, patientId) {
         "requester": {
             "reference": "Practitioner/example-practitioner",
             "display": "Dr. Example"
-        }
-
+        },
+        "businessStatus": {
+            "text": "Received"
+        },
+        "owner": {
+            "reference": "PractitionerRole/example-practitionerRole",
+            "display": "Dr. Onwers"
+        },
     };
 }
 
 app.post('/list', async (req, res) => {
-    console.log("Received request body:", req.body);
+    // console.log("Received request body:", req.body);
     try {
         const fhirListResource = req.body;
-        console.log("Resource before validation:", JSON.stringify(fhirListResource, null, 2));
+        // console.log("Resource before validation:", JSON.stringify(fhirListResource, null, 2));
         validateFHIRListResource(fhirListResource);
 
         const athenaAccessToken = await getAthenaADToken();
@@ -143,8 +175,10 @@ app.post('/list', async (req, res) => {
                             'Ocp-Apim-Subscription-Key': subscriptionKey
                         }
                     });
-                    console.log("response.data", response.data);
-                    return response.data;
+                    const queryJson = response.data
+                    getPractitionerDetails(queryJson);
+                    // console.log("queryJson", queryJson);
+                    return queryJson;
                 } else {
                     console.log("Not a Patient or ServiceRequest entry. Skipping query.");
                     return null;
@@ -154,36 +188,35 @@ app.post('/list', async (req, res) => {
                 return null;
             }
         });
-        
 
-        const queryResponses = await Promise.all(queryPromises);
-        console.log("queryPromises", queryResponses);
+        // const queryResponses = await Promise.all(queryPromises);
+        // console.log("queryPromises", queryResponses);
 
         //Create a Task for each ServiceRequest
-        const taskPromises = queryPromises.map(entry => {
-            const serviceRequestReference = entry.item.reference;
-            const patientId = serviceRequestReference.split('/')[1];
-            const task = createTaskObject(serviceRequestReference, patientId);
+        // const taskPromises = fhirListResource.entry.map(entry => {
+        //     const serviceRequestReference = entry.item.reference;
+        //     const patientId = serviceRequestReference.split('/')[1];
+        //     const task = createTaskObject(serviceRequestReference, patientId);
 
-            console.log("------------------------------------------------");
-            console.log("serviceRequestReference", serviceRequestReference)
-            console.log("patientId", patientId);
-            console.log("task", task);
-            console.log("------------------------------------------------");
+        //     console.log("------------------------------------------------");
+        //     console.log("serviceRequestReference", serviceRequestReference)
+        //     console.log("patientId", patientId);
+        //     console.log("task", task);
+        //     console.log("------------------------------------------------");
 
-            return axios.post(`${fhirServerURL}/Task`, task, {
-                headers: { 
-                    'Content-Type': 'application/json', 
-                    'Authorization': `Bearer ${accessToken}` 
-                }
-            }).then(response => response.data).catch(error => {
-                console.error('Failed to create task:', error);
-                return null;
-            });
-        });
+        //     return axios.post(`${fhirServerURL}/Task`, task, {
+        //         headers: { 
+        //             'Content-Type': 'application/json', 
+        //             'Authorization': `Bearer ${accessToken}` 
+        //         }
+        //     }).then(response => response.data).catch(error => {
+        //         console.error('Failed to create task:', error);
+        //         return null;
+        //     });
+        // });
 
-        const taskResponses = await Promise.all(taskPromises);
-        console.log("taskResponses",taskResponses);
+        // const taskResponses = await Promise.all(taskPromises);
+        // console.log("taskResponses",taskResponses);
 
 
         // Combine the responses into one object to send back
@@ -195,7 +228,7 @@ app.post('/list', async (req, res) => {
 
         // Send back the combined response
         // res.status(200).json(combinedResponse);
-        res.status(200).json(queryPromises.data);
+        //res.status(200).json(queryPromises.data);
     } catch (error) {
         console.error('Error:', error);
         console.log("Error details:", JSON.stringify(error, null, 2));
