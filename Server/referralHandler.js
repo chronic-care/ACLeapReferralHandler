@@ -38,9 +38,28 @@ app.use(cors(corsOptions));
 // Use express.json() to parse JSON payloads
 app.use(express.json());
 
-async function makeFHIRRequest() {
+async function makeFHIRRequest(task) {
+    try {
+        const fhirServerURL = process.env.fhirServer_URL;
+        const accessToken = await getAzureADToken();
 
+        console.log("fhirServerURL", fhirServerURL);
+        console.log("accessToken", accessToken);
+
+        const response = await axios.post(`${fhirServerURL}/Task`, task, {
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${accessToken}`
+            }
+        });
+        console.log("Task created successfully:", response.data);
+        return response.data;
+    } catch (error) {
+        console.error('Failed to create task:', error.response?.data || error.message);
+        return null;
+    }
 }
+
 
 
 // validation function for the FHIR List resource
@@ -72,7 +91,7 @@ function validateFHIRListResource(resource) {
 }
 
 // Helper function to create a Task object
-function getPractitionerDetails(queryJson) {
+function getPractitionerDetails(queryJson, patientIdEntry, serviceRequestIdEntry) {
     const requesterReference = queryJson.entry.map(entry => entry.resource?.requester?.reference).find(reference => reference);
 
     if (requesterReference) {
@@ -85,11 +104,13 @@ function getPractitionerDetails(queryJson) {
 
         if (requesterPractitioner) {
             const requesterPractitionerId = requesterPractitioner.id;
-            // const requesterPractitionerName = requesterPractitioner.name[0];
             const requesterPractitionerName = `${requesterPractitioner.name[0]?.family || ''} ${requesterPractitioner.name[0]?.given?.join(' ') || ''} ${requesterPractitioner.name[0]?.suffix?.join(' ') || ''}`;
+            
             console.log("Requester Practitioner ID:", requesterPractitionerId);
             console.log("Requester Practitioner Name:", requesterPractitionerName);
 
+            //Lets make Task Object here
+            createTaskObject(patientIdEntry, serviceRequestIdEntry, requesterPractitionerId, requesterPractitionerName)
         } else {
             console.log("Requester Practitioner not found in the queryJson.");
         }
@@ -98,8 +119,14 @@ function getPractitionerDetails(queryJson) {
     }
 }
 
-function createTaskObject(serviceRequestReference, patientId) {
-    return {
+function createTaskObject(patientId, serviceRequestReference, requesterPractitionerId, requesterPractitionerName) {
+    console.log("------------------------------------------------------")
+    console.log("serviceRequestReference", serviceRequestReference);
+    console.log("patientId", patientId);
+    console.log("requesterPractitionerId", requesterPractitionerId);
+    console.log("requesterPractitionerName", requesterPractitionerName);
+    console.log("------------------------------------------------------")
+    const task= {
         "resourceType": "Task",
         "meta": {
             "profile": [
@@ -117,12 +144,16 @@ function createTaskObject(serviceRequestReference, patientId) {
                 }
             ]
         },
-        "focus": { "reference": serviceRequestReference },
-        "for": { "reference": `Patient/${patientId}` },
+        "focus": { 
+            "reference": serviceRequestReference.item.reference
+        },
+        "for": { 
+            "reference": patientId.item.reference
+        },
         "authoredOn": new Date().toISOString(),
         "requester": {
-            "reference": "Practitioner/example-practitioner",
-            "display": "Dr. Example"
+            "reference": `Practitioner/${requesterPractitionerId}`,
+            "display": requesterPractitionerName
         },
         "businessStatus": {
             "text": "Received"
@@ -132,6 +163,9 @@ function createTaskObject(serviceRequestReference, patientId) {
             "display": "Dr. Onwers"
         },
     };
+    console.log("task", task);
+    makeFHIRRequest(task);
+    return task
 }
 
 app.post('/list', async (req, res) => {
@@ -145,8 +179,6 @@ app.post('/list', async (req, res) => {
         console.log("athenaAccessToken", athenaAccessToken);
         const athenaFhirUrl = process.env.athenafhir_URL;
         const subscriptionKey = process.env.athenaSubscription_KEY;
-        const fhirServerURL = process.env.fhirServer_URL;
-        const accessToken = await getAzureADToken();
         
         // Query for each Patient ID
         const queryPromises = fhirListResource.entry.map(async entry => {   
@@ -176,7 +208,7 @@ app.post('/list', async (req, res) => {
                         }
                     });
                     const queryJson = response.data
-                    getPractitionerDetails(queryJson);
+                    getPractitionerDetails(queryJson, patientIdEntry, serviceRequestIdEntry);
                     // console.log("queryJson", queryJson);
                     return queryJson;
                 } else {
@@ -189,20 +221,14 @@ app.post('/list', async (req, res) => {
             }
         });
 
-        // const queryResponses = await Promise.all(queryPromises);
-        // console.log("queryPromises", queryResponses);
+        const queryResponses = await Promise.all(queryPromises);
+        console.log("queryPromises", queryResponses);
 
-        //Create a Task for each ServiceRequest
+        // Create a Task for each ServiceRequest
         // const taskPromises = fhirListResource.entry.map(entry => {
         //     const serviceRequestReference = entry.item.reference;
         //     const patientId = serviceRequestReference.split('/')[1];
         //     const task = createTaskObject(serviceRequestReference, patientId);
-
-        //     console.log("------------------------------------------------");
-        //     console.log("serviceRequestReference", serviceRequestReference)
-        //     console.log("patientId", patientId);
-        //     console.log("task", task);
-        //     console.log("------------------------------------------------");
 
         //     return axios.post(`${fhirServerURL}/Task`, task, {
         //         headers: { 
