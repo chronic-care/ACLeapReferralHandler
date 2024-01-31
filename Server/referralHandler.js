@@ -1,12 +1,4 @@
 require('dotenv').config();
-console.log(`Tenant ID: ${process.env.tenant_Id}`);
-console.log(`Client ID: ${process.env.client_Id}`);
-console.log(`Secret ID: ${process.env.client_Secret}`);
-console.log(`Scope ID: ${process.env.ADscope}`);
-console.log(`Token URL: ${process.env.token_Url}`);
-console.log(`Server URL: ${process.env.fhirServer_URL}`);
-
-
 
 const express = require('express');
 const cors = require('cors');
@@ -96,7 +88,6 @@ function getPractitionerDetails(queryJson, patientIdEntry, serviceRequestIdEntry
 
     if (requesterReference) {
         const practitionerId = requesterReference.split('/')[1];
-        console.log("Requester Practitioner ID:", practitionerId);
 
         const requesterPractitioner = queryJson.entry.find(entry =>
             entry.fullUrl.includes(practitionerId) && entry.resource.resourceType === 'Practitioner'
@@ -104,11 +95,8 @@ function getPractitionerDetails(queryJson, patientIdEntry, serviceRequestIdEntry
 
         if (requesterPractitioner) {
             const requesterPractitionerId = requesterPractitioner.id;
-            const requesterPractitionerName = `${requesterPractitioner.name[0]?.family || ''} ${requesterPractitioner.name[0]?.given?.join(' ') || ''} ${requesterPractitioner.name[0]?.suffix?.join(' ') || ''}`;
+            const requesterPractitionerName = `${requesterPractitioner.name[0]?.given?.join(' ') || ''} ${requesterPractitioner.name[0]?.family || ''} ${requesterPractitioner.name[0]?.suffix?.join(' ') || ''}`;
             
-            console.log("Requester Practitioner ID:", requesterPractitionerId);
-            console.log("Requester Practitioner Name:", requesterPractitionerName);
-
             //Lets make Task Object here
             createTaskObject(patientIdEntry, serviceRequestIdEntry, requesterPractitionerId, requesterPractitionerName)
         } else {
@@ -120,12 +108,6 @@ function getPractitionerDetails(queryJson, patientIdEntry, serviceRequestIdEntry
 }
 
 function createTaskObject(patientId, serviceRequestReference, requesterPractitionerId, requesterPractitionerName) {
-    console.log("------------------------------------------------------")
-    console.log("serviceRequestReference", serviceRequestReference);
-    console.log("patientId", patientId);
-    console.log("requesterPractitionerId", requesterPractitionerId);
-    console.log("requesterPractitionerName", requesterPractitionerName);
-    console.log("------------------------------------------------------")
     const task= {
         "resourceType": "Task",
         "meta": {
@@ -190,10 +172,6 @@ app.post('/list', async (req, res) => {
             const patientId = patientIdEntry ? patientIdEntry.item.reference.split('/')[1] : null;
             const serviceRequestId = serviceRequestIdEntry ? serviceRequestIdEntry.item.reference.split('/')[1] : null;
 
-        
-            console.log("Patient ID:", patientId);
-            console.log("Service Request ID:", serviceRequestId);
-        
             // Construct URL based on patient ID and service request ID
             const queryUrl = `${athenaFhirUrl}/ServiceRequest?patient=${patientId}&_id=${serviceRequestId}`;
             console.log("Query URL:", queryUrl);
@@ -220,41 +198,10 @@ app.post('/list', async (req, res) => {
                 return null;
             }
         });
-
+        // console.log(queryPromises);
         const queryResponses = await Promise.all(queryPromises);
-        console.log("queryPromises", queryResponses);
+        res.status(200).json({ message: 'Success', queryResponses});
 
-        // Create a Task for each ServiceRequest
-        // const taskPromises = fhirListResource.entry.map(entry => {
-        //     const serviceRequestReference = entry.item.reference;
-        //     const patientId = serviceRequestReference.split('/')[1];
-        //     const task = createTaskObject(serviceRequestReference, patientId);
-
-        //     return axios.post(`${fhirServerURL}/Task`, task, {
-        //         headers: { 
-        //             'Content-Type': 'application/json', 
-        //             'Authorization': `Bearer ${accessToken}` 
-        //         }
-        //     }).then(response => response.data).catch(error => {
-        //         console.error('Failed to create task:', error);
-        //         return null;
-        //     });
-        // });
-
-        // const taskResponses = await Promise.all(taskPromises);
-        // console.log("taskResponses",taskResponses);
-
-
-        // Combine the responses into one object to send back
-        // const combinedResponse = {
-        //     postResponse: postResponse.data,
-        //     queryResponses: queryResponses.filter(response => response != null),
-        //     taskResponses: taskResponses.filter(response => response != null)
-        // };
-
-        // Send back the combined response
-        // res.status(200).json(combinedResponse);
-        //res.status(200).json(queryPromises.data);
     } catch (error) {
         console.error('Error:', error);
         console.log("Error details:", JSON.stringify(error, null, 2));
