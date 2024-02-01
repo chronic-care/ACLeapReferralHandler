@@ -30,14 +30,11 @@ app.use(cors(corsOptions));
 // Use express.json() to parse JSON payloads
 app.use(express.json());
 
+//Here we are pushing the task to Azure FHIR server
 async function makeFHIRRequest(task) {
     try {
         const fhirServerURL = process.env.fhirServer_URL;
         const accessToken = await getAzureADToken();
-
-        console.log("fhirServerURL", fhirServerURL);
-        console.log("accessToken", accessToken);
-
         const response = await axios.post(`${fhirServerURL}/Task`, task, {
             headers: {
                 'Content-Type': 'application/json',
@@ -145,16 +142,13 @@ function createTaskObject(patientId, serviceRequestReference, requesterPractitio
             "display": "Dr. Onwers"
         },
     };
-    console.log("task", task);
     makeFHIRRequest(task);
     return task
 }
 
 app.post('/list', async (req, res) => {
-    // console.log("Received request body:", req.body);
     try {
         const fhirListResource = req.body;
-        // console.log("Resource before validation:", JSON.stringify(fhirListResource, null, 2));
         validateFHIRListResource(fhirListResource);
 
         const athenaAccessToken = await getAthenaADToken();
@@ -187,7 +181,6 @@ app.post('/list', async (req, res) => {
                     });
                     const queryJson = response.data
                     getPractitionerDetails(queryJson, patientIdEntry, serviceRequestIdEntry);
-                    // console.log("queryJson", queryJson);
                     return queryJson;
                 } else {
                     console.log("Not a Patient or ServiceRequest entry. Skipping query.");
@@ -223,10 +216,7 @@ app.get('/ping', async (req, res) => {
 );
 
 // Start the server on the specified port or default to 3000
-const port = process.env.PORT;
+const port = 3000;
 app.listen(port, () => {
     console.log(`Server is running on port ${port}`); // Log the server's running port
-    // bToken = getAthenaADToken();
-    // console.log('this is a message', bToken);
-
 });
