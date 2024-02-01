@@ -223,7 +223,7 @@ app.get('/ping', async (req, res) => {
 );
 
 // Start the server on the specified port or default to 3000
-const port = 3000;
+const port = process.env.PORT;
 app.listen(port, () => {
     console.log(`Server is running on port ${port}`); // Log the server's running port
     // bToken = getAthenaADToken();
