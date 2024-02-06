@@ -31,7 +31,7 @@ app.use(cors(corsOptions));
 app.use(express.json());
 
 //Here we are pushing the task to Azure FHIR server
-async function makeFHIRRequest(task) {
+async function makeFHIRRequestForTask(task) {
     try {
         const fhirServerURL = process.env.fhirServer_URL;
         const accessToken = await getAzureADToken();
@@ -45,6 +45,24 @@ async function makeFHIRRequest(task) {
         return response.data;
     } catch (error) {
         console.error('Failed to create task:', error.response?.data || error.message);
+        return null;
+    }
+}
+
+async function makeFHIRRequestForBundle(bundle) {
+    try {
+        const fhirServerURL = process.env.fhirServer_URL;
+        const accessToken = await getAzureADToken();
+        const response = await axios.post(`${fhirServerURL}/Bundle`, bundle, {
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${accessToken}`
+            }
+        });
+        console.log("Bundle created successfully:", response.data);
+        return response.data;
+    } catch (error) {
+        console.error('Failed to create Bundle:', error.response?.data || error.message);
         return null;
     }
 }
@@ -142,7 +160,7 @@ function createTaskObject(patientId, serviceRequestReference, requesterPractitio
             "display": "Dr. Onwers"
         },
     };
-    makeFHIRRequest(task);
+    makeFHIRRequestForTask(task);
     return task
 }
 
@@ -152,48 +170,35 @@ app.post('/list', async (req, res) => {
         validateFHIRListResource(fhirListResource);
 
         const athenaAccessToken = await getAthenaADToken();
-        console.log("athenaAccessToken", athenaAccessToken);
         const athenaFhirUrl = process.env.athenafhir_URL;
         const subscriptionKey = process.env.athenaSubscription_KEY;
-        
-        // Query for each Patient ID
-        const queryPromises = fhirListResource.entry.map(async entry => {   
-        
-            // Extract patient ID and service request ID from the first and second entries
-            const patientIdEntry = fhirListResource.entry.find(entry => entry.item.reference.includes('Patient'));
-            const serviceRequestIdEntry = fhirListResource.entry.find(entry => entry.item.reference.includes('ServiceRequest'));
 
-            const patientId = patientIdEntry ? patientIdEntry.item.reference.split('/')[1] : null;
-            const serviceRequestId = serviceRequestIdEntry ? serviceRequestIdEntry.item.reference.split('/')[1] : null;
+        // Extract patient ID and service request ID from the first and second entries
+        const patientIdEntry = fhirListResource.entry.find(entry => entry.item.reference.includes('Patient'));
+        const serviceRequestIdEntry = fhirListResource.entry.find(entry => entry.item.reference.includes('ServiceRequest'));
 
-            // Construct URL based on patient ID and service request ID
-            const queryUrl = `${athenaFhirUrl}/ServiceRequest?patient=${patientId}&_id=${serviceRequestId}`;
-            console.log("Query URL:", queryUrl);
-        
-            try {
-                if (queryUrl) {
-                    const response = await axios.get(queryUrl, {
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${athenaAccessToken}`,
-                            'Ocp-Apim-Subscription-Key': subscriptionKey
-                        }
-                    });
-                    const queryJson = response.data
-                    getPractitionerDetails(queryJson, patientIdEntry, serviceRequestIdEntry);
-                    return queryJson;
-                } else {
-                    console.log("Not a Patient or ServiceRequest entry. Skipping query.");
-                    return null;
-                }
-            } catch (error) {
-                console.error('Failed to get query response:', error);
-                return null;
+        const patientId = patientIdEntry ? patientIdEntry.item.reference.split('/')[1] : null;
+        const serviceRequestId = serviceRequestIdEntry ? serviceRequestIdEntry.item.reference.split('/')[1] : null;
+
+        // Construct URL based on patient ID and service request ID
+        const queryUrl = `${athenaFhirUrl}/ServiceRequest?patient=${patientId}&_id=${serviceRequestId}`;
+        console.log("Query URL:", queryUrl);
+
+        // Execute the query once
+        const response = await axios.get(queryUrl, {
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${athenaAccessToken}`,
+                'Ocp-Apim-Subscription-Key': subscriptionKey
             }
         });
-        // console.log(queryPromises);
-        const queryResponses = await Promise.all(queryPromises);
-        res.status(200).json({ message: 'Success', queryResponses});
+
+        // Extracted response data
+        const queryJsonArray = response.data;
+        console.log("Query Response:", queryJsonArray);
+        // Assuming makeFHIRRequestForBundle expects an array of responses
+        makeFHIRRequestForBundle(queryJsonArray);
+        res.status(200).json({ message: 'Success', queryResponses: queryJsonArray });
 
     } catch (error) {
         console.error('Error:', error);
@@ -206,8 +211,6 @@ app.post('/list', async (req, res) => {
             res.status(500).send({ message: 'Error processing your request', error: error.message });
         }
     }
-
-
 });
 
 app.get('/ping', async (req, res) => {
