@@ -83,8 +83,8 @@ async function getADTokenAndLog() {
             }
         });
         
-        console.log('FHIR Response:', fhirResponse );
-        //console.log('FHIR Response:', JSON.stringify(fhirResponse.data, null, 2));
+        //console.log('FHIR Response:', fhirResponse );
+        console.log('FHIR Response:', JSON.stringify(fhirResponse.data, null, 2));
     } catch (error) {
         console.error('Error when making FHIR request:', error);
     }
@@ -273,7 +273,7 @@ const port = process.env.PORT;
 app.listen(port, () => {
     console.log(`Server is running on port ${port}`); // Log the server's running port
     bToken = getADTokenAndLog();
-    console.log('this is a message', bToken);
+    
     
 });
 
