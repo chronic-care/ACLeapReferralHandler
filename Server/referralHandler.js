@@ -195,7 +195,7 @@ app.post('/list', async (req, res) => {
 
         // Extracted response data
         const queryJsonArray = response.data;
-        getPractitionerDetails(queryJson, patientIdEntry, serviceRequestIdEntry);
+        getPractitionerDetails(queryJsonArray, patientIdEntry, serviceRequestIdEntry);
         console.log("Query Response:", queryJsonArray);
         // Assuming makeFHIRRequestForBundle expects an array of responses
         makeFHIRRequestForBundle(queryJsonArray);
