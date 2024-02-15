@@ -49,6 +49,39 @@ async function makeFHIRRequestForTask(task) {
     }
 }
 
+async function checkTasks(queryJson, patientIdEntry, serviceRequestIdEntry){
+    const patientId = patientIdEntry.item.reference.split('/')[1];
+    console.log("patientIdEntry", patientId);
+    const serviceRequestId = serviceRequestIdEntry.item.reference.split('/')[1];
+    console.log("serviceRequestIdEntry", serviceRequestId);
+
+        const fhirServerURL = process.env.fhirServer_URL;
+        const accessToken = await getAzureADToken();
+        const baseUrl = `${fhirServerURL}/Task`;
+        const queryUrl = `${baseUrl}?focus:ServiceRequest=${serviceRequestId}`;
+        console.log("queryUrl for checking task", queryUrl)
+
+        try {
+            const response = await axios.get(queryUrl, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`
+                }
+            });
+            const doesServiceRequestExist = response.data.entry && response.data.entry.some(task => {
+                const taskServiceRequestId = task.resource.focus?.reference?.split('/')[1];
+                console.log("doesServiceRequestExist", taskServiceRequestId);
+                console.log("serviceRequestId", serviceRequestId)
+                return taskServiceRequestId === serviceRequestId;
+            });
+            console.log("doesServiceRequestExist", doesServiceRequestExist);
+            return doesServiceRequestExist;
+        }catch (error) {
+            console.error('Failed to query tasks:', error.response?.data || error.message);
+            return false;
+        }
+}
+
 async function makeFHIRRequestForBundle(bundle) {
     try {
         const fhirServerURL = process.env.fhirServer_URL;
@@ -59,15 +92,13 @@ async function makeFHIRRequestForBundle(bundle) {
                 'Authorization': `Bearer ${accessToken}`
             }
         });
-        console.log("Bundle created successfully:", response.data);
+        // console.log("Bundle created successfully:", response.data);
         return response.data;
     } catch (error) {
         console.error('Failed to create Bundle:', error.response?.data || error.message);
         return null;
     }
 }
-
-
 
 // validation function for the FHIR List resource
 function validateFHIRListResource(resource) {
@@ -98,7 +129,7 @@ function validateFHIRListResource(resource) {
 }
 
 // Helper function to create a Task object
-function getPractitionerDetails(queryJson, patientIdEntry, serviceRequestIdEntry) {
+async function getPractitionerDetails(queryJson, patientIdEntry, serviceRequestIdEntry) {
     const requesterReference = queryJson.entry.map(entry => entry.resource?.requester?.reference).find(reference => reference);
 
     if (requesterReference) {
@@ -112,8 +143,12 @@ function getPractitionerDetails(queryJson, patientIdEntry, serviceRequestIdEntry
             const requesterPractitionerId = requesterPractitioner.id;
             const requesterPractitionerName = `${requesterPractitioner.name[0]?.given?.join(' ') || ''} ${requesterPractitioner.name[0]?.family || ''} ${requesterPractitioner.name[0]?.suffix?.join(' ') || ''}`;
             
+            const value = await checkTasks(queryJson, patientIdEntry, serviceRequestIdEntry);
+            console.log("value:- ",value);
             //Lets make Task Object here
-            createTaskObject(patientIdEntry, serviceRequestIdEntry, requesterPractitionerId, requesterPractitionerName)
+            if (!value){
+                createTaskObject(patientIdEntry, serviceRequestIdEntry, requesterPractitionerId, requesterPractitionerName)
+            }
         } else {
             console.log("Requester Practitioner not found in the queryJson.");
         }
@@ -196,8 +231,8 @@ app.post('/list', async (req, res) => {
         // Extracted response data
         const queryJsonArray = response.data;
         getPractitionerDetails(queryJsonArray, patientIdEntry, serviceRequestIdEntry);
-        console.log("Query Response:", queryJsonArray);
-        // Assuming makeFHIRRequestForBundle expects an array of responses
+        // console.log("Query Response:", queryJsonArray);
+        
         makeFHIRRequestForBundle(queryJsonArray);
         res.status(200).json({ message: 'Success', queryResponses: queryJsonArray });
 
@@ -220,7 +255,7 @@ app.get('/ping', async (req, res) => {
 );
 
 // Start the server on the specified port or default to 3000
-const port = 3000;
+const port = process.env.PORT;
 app.listen(port, () => {
     console.log(`Server is running on port ${port}`); // Log the server's running port
 });
