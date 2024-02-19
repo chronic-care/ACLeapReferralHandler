@@ -49,11 +49,11 @@ async function makeFHIRRequestForTask(task) {
     }
 }
 
+//check if the task exists with the service request
+//creates the task if it doesnot exists
 async function checkTasks(queryJson, patientIdEntry, serviceRequestIdEntry){
     const patientId = patientIdEntry.item.reference.split('/')[1];
-    console.log("patientIdEntry", patientId);
     const serviceRequestId = serviceRequestIdEntry.item.reference.split('/')[1];
-    console.log("serviceRequestIdEntry", serviceRequestId);
 
         const fhirServerURL = process.env.fhirServer_URL;
         const accessToken = await getAzureADToken();
@@ -82,6 +82,60 @@ async function checkTasks(queryJson, patientIdEntry, serviceRequestIdEntry){
         }
 }
 
+//push patient to azure fhir server
+async function makeFHIRRequestForPatient(patientData, patientId){
+    try {
+        const fhirServerURL = process.env.fhirServer_URL;
+        const accessToken = await getAzureADToken();
+        const response = await axios.put(`${fhirServerURL}/Patient/${patientId}`, patientData, {
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${accessToken}`
+            }
+        });
+        return response.data;
+    } catch (error) {
+        console.error('Failed to create/update Patient in Azure FHIR server:', error.response?.data || error.message);
+        return null;
+    }
+}
+
+//push service request to azure fhir server
+async function makeFHIRRequestForServiceRequest(serviceRequestData, serviceRequestId){
+    try {
+        const fhirServerURL = process.env.fhirServer_URL;
+        const accessToken = await getAzureADToken();
+        const response = await axios.put(`${fhirServerURL}/ServiceRequest/${serviceRequestId}`, serviceRequestData, {
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${accessToken}`
+            }
+        });
+        return response.data;
+    } catch (error) {
+        console.error('Failed to create/update Service Request:', error.response?.data || error.message);
+        return null;
+    }
+}
+
+//push practicnor details to azure fhir server
+async function makeFHIRRequestForPracticnor(requesterPractitioner, practitionerId){
+    try {
+        const fhirServerURL = process.env.fhirServer_URL;
+        const accessToken = await getAzureADToken();
+        const response = await axios.put(`${fhirServerURL}/Practitioner/${practitionerId}`, requesterPractitioner, {
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${accessToken}`
+            }
+        });
+        return response.data;
+    } catch (error) {
+        console.error('Failed to create/update Practitioner:', error.response?.data || error.message);
+        return null;
+    }
+}
+//push the created bundle to the Azure FHIR Server
 async function makeFHIRRequestForBundle(bundle) {
     try {
         const fhirServerURL = process.env.fhirServer_URL;
@@ -92,7 +146,6 @@ async function makeFHIRRequestForBundle(bundle) {
                 'Authorization': `Bearer ${accessToken}`
             }
         });
-        // console.log("Bundle created successfully:", response.data);
         return response.data;
     } catch (error) {
         console.error('Failed to create Bundle:', error.response?.data || error.message);
@@ -139,12 +192,12 @@ async function getPractitionerDetails(queryJson, patientIdEntry, serviceRequestI
             entry.fullUrl.includes(practitionerId) && entry.resource.resourceType === 'Practitioner'
         )?.resource;
 
+        makeFHIRRequestForPracticnor(requesterPractitioner, practitionerId);
         if (requesterPractitioner) {
             const requesterPractitionerId = requesterPractitioner.id;
             const requesterPractitionerName = `${requesterPractitioner.name[0]?.given?.join(' ') || ''} ${requesterPractitioner.name[0]?.family || ''} ${requesterPractitioner.name[0]?.suffix?.join(' ') || ''}`;
             
             const value = await checkTasks(queryJson, patientIdEntry, serviceRequestIdEntry);
-            console.log("value:- ",value);
             //Lets make Task Object here
             if (!value){
                 createTaskObject(patientIdEntry, serviceRequestIdEntry, requesterPractitionerId, requesterPractitionerName)
@@ -217,7 +270,6 @@ app.post('/list', async (req, res) => {
 
         // Construct URL based on patient ID and service request ID
         const queryUrl = `${athenaFhirUrl}/ServiceRequest?patient=${patientId}&_id=${serviceRequestId}`;
-        console.log("Query URL:", queryUrl);
 
         // Execute the query once
         const response = await axios.get(queryUrl, {
@@ -227,15 +279,19 @@ app.post('/list', async (req, res) => {
                 'Ocp-Apim-Subscription-Key': subscriptionKey
             }
         });
-
         // Extracted response data
         const queryJsonArray = response.data;
-        getPractitionerDetails(queryJsonArray, patientIdEntry, serviceRequestIdEntry);
-        // console.log("Query Response:", queryJsonArray);
         
-        makeFHIRRequestForBundle(queryJsonArray);
-        res.status(200).json({ message: 'Success', queryResponses: queryJsonArray });
+        const serviceRequestData = queryJsonArray.entry.find(entry => entry.resource.resourceType === 'ServiceRequest')?.resource;
+        makeFHIRRequestForServiceRequest(serviceRequestData, serviceRequestId);
+        
+        const patientData = queryJsonArray.entry.find(entry => entry.resource.resourceType === 'Patient')?.resource;
+        makeFHIRRequestForPatient(patientData, patientId);
 
+        getPractitionerDetails(queryJsonArray, patientIdEntry, serviceRequestIdEntry);        
+        makeFHIRRequestForBundle(queryJsonArray);
+
+        res.status(200).json({ message: 'Success', queryResponses: queryJsonArray });
     } catch (error) {
         console.error('Error:', error);
         console.log("Error details:", JSON.stringify(error, null, 2));
@@ -255,7 +311,7 @@ app.get('/ping', async (req, res) => {
 );
 
 // Start the server on the specified port or default to 3000
-const port = process.env.PORT;
+const port = 3000;
 app.listen(port, () => {
     console.log(`Server is running on port ${port}`); // Log the server's running port
 });
