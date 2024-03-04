@@ -1,34 +1,27 @@
 require('dotenv').config();
-console.log(`Tenant ID: ${process.env.tenant_Id}`);
-console.log(`Client ID: ${process.env.client_Id}`);
-console.log(`Secret ID: ${process.env.client_Secret}`);
-console.log(`Scope ID: ${process.env.ADscope}`);
-console.log(`Token URL: ${process.env.token_Url}`);
-console.log(`Server URL: ${process.env.fhirServer_URL}`);
-
-
 
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
 const getAzureADToken = require('./getAzureADToken');
+const getAthenaADToken = require('./getAthenaADToken');
 
 const app = express();
 
 // whitelist for allowed origins
-const whitelist = ['https://acleapreferralhandler.azure-api.net','https://referralhandler.azurewebsites.net','http://localhost:3001','https://emrconnect.org', 'https://aphh.emrconnect.org:9443', 'https://referralhandlerserverside.azurewebsites.net']; 
+const whitelist = ['https://acleapreferralhandler.azure-api.net', 'https://referralhandler.azurewebsites.net', 'http://localhost:3001', 'https://emrconnect.org', 'https://aphh.emrconnect.org:9443', 'https://referralhandlerserverside.azurewebsites.net'];
 
 // Configure CORS options
 const corsOptions = {
-  origin: function (origin, callback) {
-    if (whitelist.indexOf(origin) !== -1 || !origin) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true, // To allow cookies and sessions
-  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    origin: function (origin, callback) {
+        if (whitelist.indexOf(origin) !== -1 || !origin) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    credentials: true, // To allow cookies and sessions
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
 };
 
 // Apply CORS with the specified options
@@ -37,66 +30,128 @@ app.use(cors(corsOptions));
 // Use express.json() to parse JSON payloads
 app.use(express.json());
 
-
-
-
-async function getADTokenAndLog() {
+//Here we are pushing the task to Azure FHIR server
+async function makeFHIRRequestForTask(task) {
     try {
-      const apimUrl = 'https://acleapreferralhandler.azure-api.net/test2/token';
-      const subscriptionKey = 'fbc46f8ac8ac42d7b7f00f6c73fb6ba5';
-  
-      const response = await axios.get(apimUrl, {
-        headers: {
-          'Ocp-Apim-Subscription-Key': subscriptionKey
-        }
-      });
-  
-      if (response.status === 200 && response.data.accessToken) {
-        const data = response.data;
-        
-        makeFHIRRequest(response.data.accessToken);
-      } else {
-        console.error('Authentication failed.');
-      }
-    } catch (error) {
-      console.error('Error when calling APIM:', error);
-    }
-  }
-
-
-  async function makeFHIRRequest(accessToken) {
-    try {
-        
-        // Create the URL with query parameters
-        const apiUrl = 'https://acleapreferralhandler.azure-api.net/resources/ServiceRequest';
-
-        // Make the GET request with the bearer token and query parameters
-        const fhirResponse = await axios.get(apiUrl, {
+        const fhirServerURL = process.env.fhirServer_URL;
+        const accessToken = await getAzureADToken();
+        const response = await axios.post(`${fhirServerURL}/Task`, task, {
             headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Ocp-Apim-Subscription-Key': 'fbc46f8ac8ac42d7b7f00f6c73fb6ba5'
-            },
-            params: {
-                'patient': '2010305739808320',
-                
-                '_id': '2021295817612060'
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${accessToken}`
             }
         });
-        
-        //console.log('FHIR Response:', fhirResponse );
-        console.log('FHIR Response:', JSON.stringify(fhirResponse.data, null, 2));
+        console.log("Task created successfully:", response.data);
+        return response.data;
     } catch (error) {
-        console.error('Error when making FHIR request:', error);
+        console.error('Failed to create task:', error.response?.data || error.message);
+        return null;
     }
-  }
+}
 
-  
+//check if the task exists with the service request
+//creates the task if it doesnot exists
+async function checkTasks(queryJson, patientIdEntry, serviceRequestIdEntry){
+    const patientId = patientIdEntry.item.reference.split('/')[1];
+    const serviceRequestId = serviceRequestIdEntry.item.reference.split('/')[1];
 
-  
+        const fhirServerURL = process.env.fhirServer_URL;
+        const accessToken = await getAzureADToken();
+        const baseUrl = `${fhirServerURL}/Task`;
+        const queryUrl = `${baseUrl}?focus:ServiceRequest=${serviceRequestId}`;
+        console.log("queryUrl for checking task", queryUrl)
 
+        try {
+            const response = await axios.get(queryUrl, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`
+                }
+            });
+            const doesServiceRequestExist = response.data.entry && response.data.entry.some(task => {
+                const taskServiceRequestId = task.resource.focus?.reference?.split('/')[1];
+                console.log("doesServiceRequestExist", taskServiceRequestId);
+                console.log("serviceRequestId", serviceRequestId)
+                return taskServiceRequestId === serviceRequestId;
+            });
+            console.log("doesServiceRequestExist", doesServiceRequestExist);
+            return doesServiceRequestExist;
+        }catch (error) {
+            console.error('Failed to query tasks:', error.response?.data || error.message);
+            return false;
+        }
+}
 
+//push patient to azure fhir server
+async function makeFHIRRequestForPatient(patientData, patientId){
+    try {
+        const fhirServerURL = process.env.fhirServer_URL;
+        const accessToken = await getAzureADToken();
+        const response = await axios.put(`${fhirServerURL}/Patient/${patientId}`, patientData, {
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${accessToken}`
+            }
+        });
+        return response.data;
+    } catch (error) {
+        console.error('Failed to create/update Patient in Azure FHIR server:', error.response?.data || error.message);
+        return null;
+    }
+}
 
+//push service request to azure fhir server
+async function makeFHIRRequestForServiceRequest(serviceRequestData, serviceRequestId){
+    try {
+        const fhirServerURL = process.env.fhirServer_URL;
+        const accessToken = await getAzureADToken();
+        const response = await axios.put(`${fhirServerURL}/ServiceRequest/${serviceRequestId}`, serviceRequestData, {
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${accessToken}`
+            }
+        });
+        return response.data;
+    } catch (error) {
+        console.error('Failed to create/update Service Request:', error.response?.data || error.message);
+        return null;
+    }
+}
 
+//push practicnor details to azure fhir server
+async function makeFHIRRequestForPracticnor(requesterPractitioner, practitionerId){
+    try {
+        const fhirServerURL = process.env.fhirServer_URL;
+        const accessToken = await getAzureADToken();
+        const response = await axios.put(`${fhirServerURL}/Practitioner/${practitionerId}`, requesterPractitioner, {
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${accessToken}`
+            }
+        });
+        return response.data;
+    } catch (error) {
+        console.error('Failed to create/update Practitioner:', error.response?.data || error.message);
+        return null;
+    }
+}
+//push the created bundle to the Azure FHIR Server
+async function makeFHIRRequestForBundle(bundle) {
+    try {
+        const fhirServerURL = process.env.fhirServer_URL;
+        const accessToken = await getAzureADToken();
+        const response = await axios.post(`${fhirServerURL}/Bundle`, bundle, {
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${accessToken}`
+            }
+        });
+        return response.data;
+    } catch (error) {
+        console.error('Failed to create Bundle:', error.response?.data || error.message);
+        return null;
+    }
+}
 
 // validation function for the FHIR List resource
 function validateFHIRListResource(resource) {
@@ -127,8 +182,36 @@ function validateFHIRListResource(resource) {
 }
 
 // Helper function to create a Task object
-function createTaskObject(serviceRequestReference, patientId) {
-    return {
+async function getPractitionerDetails(queryJson, patientIdEntry, serviceRequestIdEntry) {
+    const requesterReference = queryJson.entry.map(entry => entry.resource?.requester?.reference).find(reference => reference);
+
+    if (requesterReference) {
+        const practitionerId = requesterReference.split('/')[1];
+
+        const requesterPractitioner = queryJson.entry.find(entry =>
+            entry.fullUrl.includes(practitionerId) && entry.resource.resourceType === 'Practitioner'
+        )?.resource;
+
+        makeFHIRRequestForPracticnor(requesterPractitioner, practitionerId);
+        if (requesterPractitioner) {
+            const requesterPractitionerId = requesterPractitioner.id;
+            const requesterPractitionerName = `${requesterPractitioner.name[0]?.given?.join(' ') || ''} ${requesterPractitioner.name[0]?.family || ''} ${requesterPractitioner.name[0]?.suffix?.join(' ') || ''}`;
+            
+            const value = await checkTasks(queryJson, patientIdEntry, serviceRequestIdEntry);
+            //Lets make Task Object here
+            if (!value){
+                createTaskObject(patientIdEntry, serviceRequestIdEntry, requesterPractitionerId, requesterPractitionerName)
+            }
+        } else {
+            console.log("Requester Practitioner not found in the queryJson.");
+        }
+    } else {
+        console.log("Requester reference not found in any entry.");
+    }
+}
+
+function createTaskObject(patientId, serviceRequestReference, requesterPractitionerId, requesterPractitionerName) {
+    const task= {
         "resourceType": "Task",
         "meta": {
             "profile": [
@@ -146,92 +229,69 @@ function createTaskObject(serviceRequestReference, patientId) {
                 }
             ]
         },
-        "focus": { "reference": serviceRequestReference },
-        "for": { "reference": `Patient/${patientId}` },
+        "focus": { 
+            "reference": serviceRequestReference.item.reference
+        },
+        "for": { 
+            "reference": patientId.item.reference
+        },
         "authoredOn": new Date().toISOString(),
         "requester": {
-            "reference": "Practitioner/example-practitioner",
-            "display": "Dr. Example"
-        }
-        
+            "reference": `Practitioner/${requesterPractitionerId}`,
+            "display": requesterPractitionerName
+        },
+        "businessStatus": {
+            "text": "Received"
+        },
+        "owner": {
+            "reference": "PractitionerRole/example-practitionerRole",
+            "display": "Dr. Onwers"
+        },
     };
+    makeFHIRRequestForTask(task);
+    return task
 }
 
-//meld connection
-/*async function patchToFhirMeld(fhirData) {
-    const meldApiEndpoint = "https://gw.interop.community/acleaphub/open";
-  
-    try {
-      const response = await axios.patch(meldApiEndpoint, fhirData, {
-        headers: {
-          'Content-Type': 'application/json'
-          
-        }
-      });
-  
-      return response.data;
-    } catch (error) {
-      console.error('Error patching to MELD:', error);
-      throw error;
-    }
-  }*/
-  
-
 app.post('/list', async (req, res) => {
-    console.log("Received request body:", req.body);
     try {
         const fhirListResource = req.body;
-        console.log("Resource before validation:", JSON.stringify(fhirListResource, null, 2));
         validateFHIRListResource(fhirListResource);
 
-        const accessToken = await getAzureADToken();
-        const fhirServerURL = process.env.fhirServer_URL;
-        
-        // Post the List resource to the FHIR server
-        const postResponse = await axios.post(`${fhirServerURL}/List`, fhirListResource, {
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` }
-        });
-        
-        // Query for each Patient ID
-        const queryPromises = fhirListResource.entry.map(entry => {
-            const patientId = entry.item.reference.split('/')[1];
-            const queryUrl = `${fhirServerURL}/ServiceRequest?patient=${patientId}&...`; 
-            return axios.get(queryUrl, {
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` }
-            }).then(response => response.data).catch(error => {
-                console.error('Failed to get query response:', error);
-                return null; 
-            });
-        });
-        
-        const queryResponses = await Promise.all(queryPromises);
-        
-        // Create a Task for each ServiceRequest
-        const taskPromises = fhirListResource.entry.map(entry => {
-            const serviceRequestReference = entry.item.reference;
-            const patientId = serviceRequestReference.split('/')[1];
-            const task = createTaskObject(serviceRequestReference, patientId); 
-            
-            return axios.post(`${fhirServerURL}/Task`, task, {
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` }
-            }).then(response => response.data).catch(error => {
-                console.error('Failed to create task:', error);
-                return null; 
-            });
-        });
-        
-        const taskResponses = await Promise.all(taskPromises);
+        const athenaAccessToken = await getAthenaADToken();
+        const athenaFhirUrl = process.env.athenafhir_URL;
+        const subscriptionKey = process.env.athenaSubscription_KEY;
 
-        
-        // Combine the responses into one object to send back
-        const combinedResponse = {
-            postResponse: postResponse.data,
-            queryResponses: queryResponses.filter(response => response != null),
-            taskResponses: taskResponses.filter(response => response != null)
-        };
+        // Extract patient ID and service request ID from the first and second entries
+        const patientIdEntry = fhirListResource.entry.find(entry => entry.item.reference.includes('Patient'));
+        const serviceRequestIdEntry = fhirListResource.entry.find(entry => entry.item.reference.includes('ServiceRequest'));
 
-        // Send back the combined response
-        res.status(200).json(combinedResponse);
+        const patientId = patientIdEntry ? patientIdEntry.item.reference.split('/')[1] : null;
+        const serviceRequestId = serviceRequestIdEntry ? serviceRequestIdEntry.item.reference.split('/')[1] : null;
+
+        // Construct URL based on patient ID and service request ID
+        const queryUrl = `${athenaFhirUrl}/ServiceRequest?patient=${patientId}&_id=${serviceRequestId}`;
+
+        // Execute the query once
+        const response = await axios.get(queryUrl, {
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${athenaAccessToken}`,
+                'Ocp-Apim-Subscription-Key': subscriptionKey
+            }
+        });
+        // Extracted response data
+        const queryJsonArray = response.data;
+        
+        const serviceRequestData = queryJsonArray.entry.find(entry => entry.resource.resourceType === 'ServiceRequest')?.resource;
+        makeFHIRRequestForServiceRequest(serviceRequestData, serviceRequestId);
+        
+        const patientData = queryJsonArray.entry.find(entry => entry.resource.resourceType === 'Patient')?.resource;
+        makeFHIRRequestForPatient(patientData, patientId);
+
+        getPractitionerDetails(queryJsonArray, patientIdEntry, serviceRequestIdEntry);        
+        makeFHIRRequestForBundle(queryJsonArray);
+
+        res.status(200).json({ message: 'Success', queryResponses: queryJsonArray });
     } catch (error) {
         console.error('Error:', error);
         console.log("Error details:", JSON.stringify(error, null, 2));
@@ -243,38 +303,17 @@ app.post('/list', async (req, res) => {
             res.status(500).send({ message: 'Error processing your request', error: error.message });
         }
     }
-
-    
 });
 
 app.get('/ping', async (req, res) => {
-    res.status(200).json({"Message" : " Get method Confirmation"});
+    res.status(200).json({ "Message": " Get method Confirmation" });
 }
 );
-
-//meld Patch
-/*app.patch('/patchToFhirMeld', async (req, res) => {
-    try {
-        const fhirData = req.body; 
-
-        const meldResponse = await patchToFhirMeld(fhirData);
-
-        res.status(200).json({ message: 'PATCH request to MELD successful', meldResponse });
-    } catch (error) {
-        console.error('Error:', error);
-        console.log("Error details:", JSON.stringify(error, null, 2));
-        res.status(500).json({ message: 'Error patching to MELD', error: error.message });
-    }
-});*/
-
 
 // Start the server on the specified port or default to 3000
 const port = process.env.PORT;
 app.listen(port, () => {
     console.log(`Server is running on port ${port}`); // Log the server's running port
-    bToken = getADTokenAndLog();
-    
-    
 });
 
 
