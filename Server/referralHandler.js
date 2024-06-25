@@ -119,11 +119,11 @@ async function makeFHIRRequestForServiceRequest(serviceRequestData, serviceReque
 }
 
 //push practicnor details to azure fhir server
-async function makeFHIRRequestForPracticnor(requesterPractitioner, practitionerId){
+async function makeFHIRRequestForPractitioner(practitionerData, practitionerId) {
     try {
         const fhirServerURL = process.env.fhirServer_URL;
         const accessToken = await getAzureADToken();
-        const response = await axios.put(`${fhirServerURL}/Practitioner/${practitionerId}`, requesterPractitioner, {
+        const response = await axios.put(`${fhirServerURL}/Practitioner/${practitionerId}`, practitionerData, {
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${accessToken}`
@@ -184,7 +184,9 @@ function validateFHIRListResource(resource) {
 // Helper function to create a Task object
 async function getPractitionerDetails(queryJson, patientIdEntry, serviceRequestIdEntry) {
     const requesterReference = queryJson.entry.map(entry => entry.resource?.requester?.reference).find(reference => reference);
+    const performerReference = queryJson.entry.map(entry => entry.resource?.performer?.[0]?.reference).find(reference => reference);
 
+    // Process requester if exists
     if (requesterReference) {
         const practitionerId = requesterReference.split('/')[1];
 
@@ -192,11 +194,11 @@ async function getPractitionerDetails(queryJson, patientIdEntry, serviceRequestI
             entry.fullUrl.includes(practitionerId) && entry.resource.resourceType === 'Practitioner'
         )?.resource;
 
-        makeFHIRRequestForPracticnor(requesterPractitioner, practitionerId);
+        makeFHIRRequestForPractitioner(requesterPractitioner, practitionerId);
         if (requesterPractitioner) {
             const requesterPractitionerId = requesterPractitioner.id;
             const requesterPractitionerName = `${requesterPractitioner.name[0]?.given?.join(' ') || ''} ${requesterPractitioner.name[0]?.family || ''} ${requesterPractitioner.name[0]?.suffix?.join(' ') || ''}`;
-            
+
             const value = await checkTasks(queryJson, patientIdEntry, serviceRequestIdEntry);
             //Lets make Task Object here
             if (!value){
@@ -208,7 +210,33 @@ async function getPractitionerDetails(queryJson, patientIdEntry, serviceRequestI
     } else {
         console.log("Requester reference not found in any entry.");
     }
+
+    // Process performer if exists
+    if (performerReference) {
+        const practitionerId = performerReference.split('/')[1];
+
+        const performerPractitioner = queryJson.entry.find(entry =>
+            entry.fullUrl.includes(practitionerId) && entry.resource.resourceType === 'Practitioner'
+        )?.resource;
+
+        makeFHIRRequestForPractitioner(performerPractitioner, practitionerId);
+
+        if (performerPractitioner) {
+            const performerPractitionerId = performerPractitioner.id;
+            const performerPractitionerName = `${performerPractitioner.name[0]?.given?.join(' ') || ''} ${performerPractitioner.name[0]?.family || ''} ${performerPractitioner.name[0]?.suffix?.join(' ') || ''}`;
+
+            const value = await checkTasks(queryJson, patientIdEntry, serviceRequestIdEntry);
+            if (!value) {
+                createTaskObject(patientIdEntry, serviceRequestIdEntry, performerPractitionerId, performerPractitionerName);
+            }
+        } else {
+            console.log("Performer Practitioner not found in the queryJson.");
+        }
+    } else {
+        console.log("Performer reference not found in any entry.");
+    }
 }
+
 
 function createTaskObject(patientId, serviceRequestReference, requesterPractitionerId, requesterPractitionerName) {
     const task= {
@@ -315,5 +343,3 @@ const port = process.env.PORT;
 app.listen(port, () => {
     console.log(`Server is running on port ${port}`); // Log the server's running port
 });
-
-
